@@ -2,26 +2,33 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::hash::Hash;
 
-use futures_lite::stream::Boxed;
-
 use crate::device_info::DeviceId;
 use crate::traits::{AsyncHidFeatureHandle, AsyncHidRead, AsyncHidWrite};
-use crate::{DeviceEvent, DeviceInfo, HidResult};
+use crate::{DeviceEvent, DeviceInfo, HidResult, MaybeSend, MaybeSync};
 
-pub type DeviceInfoStream = Boxed<HidResult<DeviceInfo>>;
+#[cfg(not(target_arch = "wasm32"))]
+pub type DeviceInfoStream = futures_lite::stream::Boxed<HidResult<DeviceInfo>>;
+#[cfg(target_arch = "wasm32")]
+pub type DeviceInfoStream = std::pin::Pin<Box<dyn futures_lite::Stream<Item = HidResult<DeviceInfo>> + 'static>>;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub type EventStream = futures_lite::stream::Boxed<DeviceEvent>;
+#[cfg(target_arch = "wasm32")]
+pub type EventStream = std::pin::Pin<Box<dyn futures_lite::Stream<Item = DeviceEvent> + 'static>>;
+
 pub trait Backend: Sized + Default {
-    type Reader: AsyncHidRead + Send + Sync;
-    type Writer: AsyncHidWrite + Send + Sync;
-    type FeatureHandle: AsyncHidFeatureHandle + Send + Sync;
+    type Reader: AsyncHidRead + MaybeSend + MaybeSync;
+    type Writer: AsyncHidWrite + MaybeSend + MaybeSync;
+    type FeatureHandle: AsyncHidFeatureHandle + MaybeSend + MaybeSync;
 
-    fn enumerate(&self) -> impl Future<Output = HidResult<DeviceInfoStream>> + Send;
-    fn watch(&self) -> HidResult<Boxed<DeviceEvent>>;
+    fn enumerate(&self) -> impl Future<Output = HidResult<DeviceInfoStream>> + MaybeSend;
+    fn watch(&self) -> HidResult<EventStream>;
 
-    fn query_info(&self, id: &DeviceId) -> impl Future<Output = HidResult<Vec<DeviceInfo>>> + Send;
+    fn query_info(&self, id: &DeviceId) -> impl Future<Output = HidResult<Vec<DeviceInfo>>> + MaybeSend;
 
     #[allow(clippy::type_complexity)]
-    fn open(&self, id: &DeviceId, read: bool, write: bool) -> impl Future<Output = HidResult<(Option<Self::Reader>, Option<Self::Writer>)>> + Send;
-    fn open_feature_handle(&self, id: &DeviceId) -> impl Future<Output = HidResult<Self::FeatureHandle>> + Send;
+    fn open(&self, id: &DeviceId, read: bool, write: bool) -> impl Future<Output = HidResult<(Option<Self::Reader>, Option<Self::Writer>)>> + MaybeSend;
+    fn open_feature_handle(&self, id: &DeviceId) -> impl Future<Output = HidResult<Self::FeatureHandle>> + MaybeSend;
 
     async fn read_feature_report(&self, id: &DeviceId, buf: &mut [u8]) -> HidResult<usize> {
         let mut feature_buffer = self.open_feature_handle(id).await?;
@@ -143,7 +150,7 @@ macro_rules! dyn_backend_impl {
                 }
             }
 
-            fn watch(&self) -> HidResult<Boxed<DeviceEvent>> {
+            fn watch(&self) -> HidResult<EventStream> {
                 match self {
                     $(
                         $(#[$module_attrs])*$(#[$item_attrs])*
@@ -188,6 +195,8 @@ mod hidraw;
 #[cfg(rustfmt)]
 mod iohidmanager;
 #[cfg(rustfmt)]
+mod webhid;
+#[cfg(rustfmt)]
 mod win32;
 #[cfg(rustfmt)]
 mod winrt;
@@ -211,7 +220,14 @@ dyn_backend_impl! {
     mod iohidmanager {
         IoHidManager(iohidmanager::IoHidManagerBackend)
     }
+    #[cfg(target_arch = "wasm32")]
+    mod webhid {
+        WebHid(webhid::WebHidBackend)
+    }
 }
+
+#[cfg(target_arch = "wasm32")]
+pub use webhid::{request_device, RequestFilter};
 
 impl Default for DynBackend {
     #[allow(unreachable_code)]
@@ -230,6 +246,10 @@ impl Default for DynBackend {
         #[cfg(target_os = "macos")]
         {
             return Self::new(BackendType::IoHidManager);
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            return Self::new(BackendType::WebHid);
         }
         panic!("No suitable backend found");
     }

@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>async-hid WebHID Demo</title>
+    <style>
+        body { font-family: monospace; max-width: 1100px; margin: 40px auto; padding: 0 20px; }
+        button { margin: 4px 4px; padding: 8px 16px; }
+        pre { background: #f0f0f0; padding: 12px; overflow-x: auto; margin: 8px 0; }
+        #events { max-height: 150px; overflow-y: auto; }
+        #reports { min-height: 1.5em; }
+        #status { color: #666; }
+        h3 { margin: 16px 0 4px 0; }
+    </style>
+</head>
+<body>
+    <h1>async-hid WebHID Demo</h1>
+    <p id="status">Click "Request Device" to begin.</p>
+    <button id="request-btn">Request Device</button>
+    <div id="devices"></div>
+    <h3>Events</h3>
+    <pre id="events"></pre>
+    <h3>Latest Input Report</h3>
+    <pre id="reports"></pre>
+    <link data-trunk rel="rust" data-wasm-opt="z" />
+</body>
+</html>

@@ -4,11 +4,12 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use futures_lite::{Stream, StreamExt};
+#[cfg(not(target_arch = "wasm32"))]
 use static_assertions::assert_impl_all;
 
 use crate::backend::{Backend, BackendType, DynBackend};
 use crate::device::DeviceFeatureHandle;
-use crate::{DeviceReader, DeviceReaderWriter, DeviceWriter, HidResult};
+use crate::{DeviceReader, DeviceReaderWriter, DeviceWriter, HidResult, MaybeSend};
 
 /// A platform-specific identifier for a device.
 ///
@@ -35,8 +36,11 @@ pub enum DeviceId {
     #[cfg(target_os = "linux")]
     DevPath(std::path::PathBuf),
     #[cfg(target_os = "macos")]
-    RegistryEntryId(u64)
+    RegistryEntryId(u64),
+    #[cfg(target_arch = "wasm32")]
+    WebHid(u32),
 }
+#[cfg(not(target_arch = "wasm32"))]
 assert_impl_all!(DeviceId: Send, Sync, Unpin);
 
 /// A struct containing basic information about a device
@@ -73,6 +77,7 @@ pub struct DeviceInfo {
     /// `None` if the backend does not support reporting this.
     pub max_feature_report_size: Option<u16>,
 }
+#[cfg(not(target_arch = "wasm32"))]
 assert_impl_all!(DeviceInfo: Send, Sync, Unpin);
 
 impl DeviceInfo {
@@ -102,7 +107,7 @@ impl HidBackend {
     /// Enumerates all **accessible** HID devices
     ///
     /// If this library fails to retrieve the [DeviceInfo] of a device, it will be automatically excluded.
-    pub async fn enumerate(&self) -> HidResult<impl Stream<Item = Device> + Send + Unpin + use<'_>> {
+    pub async fn enumerate(&self) -> HidResult<impl Stream<Item = Device> + MaybeSend + Unpin + use<'_>> {
         let steam = self.0.enumerate().await?.filter_map(|result| match result {
             Ok(info) => Some(Device {
                 backend: self.0.clone(),
@@ -124,7 +129,7 @@ impl HidBackend {
     /// Listen for device connect/disconnect events
     ///
     /// For "connect" events the returned id can be turned into a list of new devices using [self.query_devices]
-    pub fn watch(&self) -> HidResult<impl Stream<Item = DeviceEvent> + Send + Unpin> {
+    pub fn watch(&self) -> HidResult<impl Stream<Item = DeviceEvent> + MaybeSend + Unpin> {
         self.0.watch()
     }
 }

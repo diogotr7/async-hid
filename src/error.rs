@@ -2,6 +2,11 @@ use std::borrow::Cow;
 use std::fmt::{Debug, Display, Formatter};
 use std::panic::Location;
 
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) type BoxedError = Box<dyn std::error::Error + Send + Sync>;
+#[cfg(target_arch = "wasm32")]
+pub(crate) type BoxedError = Box<dyn std::error::Error>;
+
 /// Specialized result type used for many functions in this library
 pub type HidResult<T> = Result<T, HidError>;
 
@@ -19,7 +24,7 @@ pub enum HidError {
     /// This error occurs when trying to open a device which is no longer connected
     NotConnected,
     Message(Cow<'static, str>),
-    Other(Box<dyn std::error::Error + Send + Sync>)
+    Other(BoxedError)
 }
 
 impl HidError {
@@ -27,9 +32,18 @@ impl HidError {
         Self::Message(msg.into())
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[track_caller]
-    pub fn from_backend(error: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> Self {
-        let error = error.into();
+    pub fn from_backend(error: impl std::error::Error + Send + Sync + 'static) -> Self {
+        let error: BoxedError = Box::new(error);
+        log::trace!("Backend error: {} at {}", error, Location::caller());
+        Self::Other(error)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[track_caller]
+    pub fn from_backend(error: impl std::error::Error + 'static) -> Self {
+        let error: BoxedError = Box::new(error);
         log::trace!("Backend error: {} at {}", error, Location::caller());
         Self::Other(error)
     }
@@ -79,6 +93,17 @@ impl From<nix::errno::Errno> for HidError {
     #[track_caller]
     fn from(error: nix::errno::Errno) -> Self {
         HidError::from_backend(nix::Error::from(error))
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl From<wasm_bindgen::JsValue> for HidError {
+    fn from(value: wasm_bindgen::JsValue) -> Self {
+        let msg = js_sys::Error::from(value)
+            .message()
+            .as_string()
+            .unwrap_or_else(|| "Unknown JS error".to_string());
+        HidError::message(msg)
     }
 }
 

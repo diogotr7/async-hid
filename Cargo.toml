@@ -59,6 +59,25 @@ block2 = "0.6.1"
 atomic-waker = "1.1.2"
 crossbeam-queue = "0.3.12"
 
+[target."cfg(target_arch = \"wasm32\")".dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+futures-channel = "0.3"
+web-sys = { version = "0.3", features = [
+    "Navigator",
+    "Window",
+    "Hid",
+    "HidDevice",
+    "HidDeviceFilter",
+    "HidDeviceRequestOptions",
+    "HidInputReportEvent",
+    "HidConnectionEvent",
+    "HidCollectionInfo",
+    "HidReportInfo",
+    "HidReportItem",
+]}
+
 [dev-dependencies]
 simple_logger = "5"
 futures-lite = "2.5.0"
