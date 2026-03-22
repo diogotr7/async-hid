@@ -3,8 +3,9 @@ use std::mem::transmute;
 
 use objc2_core_foundation::{kCFAllocatorNull, CFArray, CFDictionary, CFNumber, CFRetained, CFString, CFStringBuiltInEncodings};
 use objc2_io_kit::{
-    kIOHIDDeviceUsageKey, kIOHIDDeviceUsagePageKey, kIOHIDDeviceUsagePairsKey, kIOHIDPrimaryUsageKey, kIOHIDPrimaryUsagePageKey, kIOHIDProductIDKey,
-    kIOHIDProductKey, kIOHIDManufacturerKey, kIOHIDSerialNumberKey, kIOHIDVendorIDKey, kIOReturnSuccess, IOHIDDevice, IORegistryEntryGetRegistryEntryID,
+    kIOHIDDeviceUsageKey, kIOHIDDeviceUsagePageKey, kIOHIDDeviceUsagePairsKey, kIOHIDMaxFeatureReportSizeKey, kIOHIDMaxInputReportSizeKey,
+    kIOHIDMaxOutputReportSizeKey, kIOHIDPrimaryUsageKey, kIOHIDPrimaryUsagePageKey, kIOHIDProductIDKey, kIOHIDProductKey, kIOHIDManufacturerKey,
+    kIOHIDSerialNumberKey, kIOHIDVendorIDKey, kIOReturnSuccess, IOHIDDevice, IORegistryEntryGetRegistryEntryID,
 };
 
 use crate::{ensure, DeviceId, DeviceInfo, HidError, HidResult};
@@ -51,6 +52,24 @@ pub fn get_device_info(device: &IOHIDDevice) -> HidResult<Vec<DeviceInfo>> {
         .property(&property_key(kIOHIDSerialNumberKey))
         .and_then(|p| p.downcast_ref::<CFString>().map(|p| p.to_string()));
 
+    let max_input_report_size = device
+        .property(&property_key(kIOHIDMaxInputReportSizeKey))
+        .and_then(|p| p.downcast_ref::<CFNumber>())
+        .and_then(|n| n.as_i32())
+        .map(|n| n as u16);
+
+    let max_output_report_size = device
+        .property(&property_key(kIOHIDMaxOutputReportSizeKey))
+        .and_then(|p| p.downcast_ref::<CFNumber>())
+        .and_then(|n| n.as_i32())
+        .map(|n| n as u16);
+
+    let max_feature_report_size = device
+        .property(&property_key(kIOHIDMaxFeatureReportSizeKey))
+        .and_then(|p| p.downcast_ref::<CFNumber>())
+        .and_then(|n| n.as_i32())
+        .map(|n| n as u16);
+
     let primary_info = DeviceInfo {
         id: get_device_id(device)?,
         name,
@@ -60,6 +79,9 @@ pub fn get_device_info(device: &IOHIDDevice) -> HidResult<Vec<DeviceInfo>> {
         usage_id: primary_usage_id,
         usage_page: primary_usage_page,
         serial_number,
+        max_input_report_size,
+        max_output_report_size,
+        max_feature_report_size,
     };
 
     let mut result = vec![primary_info.clone()];

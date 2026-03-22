@@ -1,8 +1,16 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::path::Path;
 
 use crate::HidResult;
+
+/// Maximum report sizes (in bytes) for each direction.
+pub struct ReportSizes {
+    pub max_input: u16,
+    pub max_output: u16,
+    pub max_feature: u16,
+}
 
 #[derive(Default)]
 pub struct HidrawReportDescriptor(Vec<u8>);
@@ -31,6 +39,101 @@ impl HidrawReportDescriptor {
         UsageIterator {
             usage_page: 0,
             cursor: Cursor::new(&self.0)
+        }
+    }
+
+    /// Parse the descriptor to determine the maximum report sizes for each direction
+    /// (input, output, feature).
+    ///
+    /// Returns the maximum byte count across all report IDs for each direction.
+    /// If report IDs are used, the returned sizes include one extra byte for the
+    /// report ID prefix.
+    ///
+    /// Note: Does not handle Push/Pop global state stack (tags 0xa4/0xb4). This is
+    /// sufficient for typical HID devices but may be incorrect for complex descriptors
+    /// that use nested global state.
+    pub fn max_report_sizes(&self) -> ReportSizes {
+        let mut cursor = Cursor::new(&self.0);
+
+        let mut report_id: u8 = 0;
+        let mut report_size: u32 = 0;
+        let mut report_count: u32 = 0;
+        let mut has_report_ids = false;
+
+        // Track accumulated bits per report ID for each direction
+        let mut input_bits: HashMap<u8, u32> = HashMap::new();
+        let mut output_bits: HashMap<u8, u32> = HashMap::new();
+        let mut feature_bits: HashMap<u8, u32> = HashMap::new();
+
+        while let Some(Ok(key)) = cursor.bytes().next() {
+            let position = cursor.position() - 1;
+            let key_cmd = key & 0xfc;
+
+            let (data_len, key_size) = match hid_item_size(key, &mut cursor) {
+                Some(v) => v,
+                None => break,
+            };
+
+            match key_cmd {
+                // Report ID (Global)
+                0x84 => {
+                    report_id = match hid_report_bytes(&mut cursor, data_len) {
+                        Ok(v) => {
+                            has_report_ids = true;
+                            v as u8
+                        }
+                        Err(_) => break,
+                    };
+                }
+                // Report Size (Global)
+                0x74 => {
+                    report_size = match hid_report_bytes(&mut cursor, data_len) {
+                        Ok(v) => v,
+                        Err(_) => break,
+                    };
+                }
+                // Report Count (Global)
+                0x94 => {
+                    report_count = match hid_report_bytes(&mut cursor, data_len) {
+                        Ok(v) => v,
+                        Err(_) => break,
+                    };
+                }
+                // Input (Main)
+                0x80 => {
+                    *input_bits.entry(report_id).or_insert(0) += report_size * report_count;
+                }
+                // Output (Main)
+                0x90 => {
+                    *output_bits.entry(report_id).or_insert(0) += report_size * report_count;
+                }
+                // Feature (Main)
+                0xb0 => {
+                    *feature_bits.entry(report_id).or_insert(0) += report_size * report_count;
+                }
+                _ => {}
+            }
+
+            if cursor
+                .seek(SeekFrom::Start(position + (data_len + key_size) as u64))
+                .is_err()
+            {
+                break;
+            }
+        }
+
+        let bits_to_bytes = |map: &HashMap<u8, u32>| -> u16 {
+            let max_bits = map.values().copied().max().unwrap_or(0);
+            let bytes = (max_bits + 7) / 8;
+            // If report IDs are used, add one byte for the report ID prefix
+            let bytes = if has_report_ids { bytes + 1 } else { bytes };
+            bytes as u16
+        };
+
+        ReportSizes {
+            max_input: bits_to_bytes(&input_bits),
+            max_output: bits_to_bytes(&output_bits),
+            max_feature: bits_to_bytes(&feature_bits),
         }
     }
 }

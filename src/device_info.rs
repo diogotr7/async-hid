@@ -59,7 +59,19 @@ pub struct DeviceInfo {
     /// The HID usage page
     pub usage_page: u16,
     /// The serial number of the device. Might be `None` if the device does not have a serial number or the platform/backend does not support retrieving the serial number.
-    pub serial_number: Option<String>
+    pub serial_number: Option<String>,
+    /// The maximum input report byte length as reported by the OS.
+    /// On platforms where devices use report IDs, this includes the report ID prefix byte.
+    /// `None` if the backend does not support reporting this.
+    pub max_input_report_size: Option<u16>,
+    /// The maximum output report byte length as reported by the OS.
+    /// On platforms where devices use report IDs, this includes the report ID prefix byte.
+    /// `None` if the backend does not support reporting this.
+    pub max_output_report_size: Option<u16>,
+    /// The maximum feature report byte length as reported by the OS.
+    /// On platforms where devices use report IDs, this includes the report ID prefix byte.
+    /// `None` if the backend does not support reporting this.
+    pub max_feature_report_size: Option<u16>,
 }
 assert_impl_all!(DeviceInfo: Send, Sync, Unpin);
 

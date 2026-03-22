@@ -174,6 +174,9 @@ fn get_device_info_raw(path: PathBuf) -> HidResult<Vec<DeviceInfo>> {
         .filter(|s| !s.is_empty())
         .map(str::to_string);
 
+    let descriptor = HidrawReportDescriptor::from_syspath(&path).ok();
+    let report_sizes = descriptor.as_ref().map(|d| d.max_report_sizes());
+
     let info = DeviceInfo {
         id: DeviceId::DevPath(path.clone()),
         name,
@@ -182,10 +185,13 @@ fn get_device_info_raw(path: PathBuf) -> HidResult<Vec<DeviceInfo>> {
         vendor_id,
         usage_id: 0,
         usage_page: 0,
-        serial_number
+        serial_number,
+        max_input_report_size: report_sizes.as_ref().map(|r| r.max_input),
+        max_output_report_size: report_sizes.as_ref().map(|r| r.max_output),
+        max_feature_report_size: report_sizes.as_ref().map(|r| r.max_feature),
     };
 
-    let results = HidrawReportDescriptor::from_syspath(&path)
+    let results = descriptor
         .map(|descriptor| {
             descriptor
                 .usages()
@@ -196,7 +202,7 @@ fn get_device_info_raw(path: PathBuf) -> HidResult<Vec<DeviceInfo>> {
                 })
                 .collect()
         })
-        .unwrap_or_else(|_| vec![info]);
+        .unwrap_or_else(|| vec![info]);
     Ok(results)
 }
 

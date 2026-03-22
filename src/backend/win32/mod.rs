@@ -106,7 +106,10 @@ fn get_device_information(id: HSTRING) -> HidResult<DeviceInfo> {
         vendor_id: attribs.VendorID,
         usage_id: caps.Usage,
         usage_page: caps.UsagePage,
-        serial_number
+        serial_number,
+        max_input_report_size: Some(caps.InputReportByteLength),
+        max_output_report_size: Some(caps.OutputReportByteLength),
+        max_feature_report_size: Some(caps.FeatureReportByteLength),
     })
 }
 
